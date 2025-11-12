@@ -2,7 +2,7 @@
 
 ## Overview
 
-The PTR Auto-Generation feature automatically creates PTR (Pointer) records for reverse DNS zones. When creating a new reverse zone (in-addr.arpa), users can opt to auto-generate A records for IP addresses 1-254.
+The PTR Auto-Generation feature automatically creates PTR (Pointer) records for reverse DNS zones. When creating a new reverse zone (in-addr.arpa), users can opt to auto-generate PTR records for IP addresses 1-254.
 
 ## Feature Details
 
@@ -11,7 +11,7 @@ The PTR Auto-Generation feature automatically creates PTR (Pointer) records for 
 When enabled, this feature:
 1. **Detects reverse zones**: Automatically identifies reverse zones containing "in-addr.arpa" or "ip6.arpa"
 2. **Shows checkbox**: Displays an optional checkbox to enable auto-generation
-3. **Generates 254 records**: Creates A records for IPs 1-254 in the reverse zone
+3. **Generates 254 records**: Creates PTR records for IPs 1-254 in the reverse zone
 4. **Batch processing**: Processes records in batches of 10 to avoid API overload
 
 ### How to Use
@@ -27,12 +27,12 @@ Click the "Add Zone" button on the DNS Zones page.
 #### Step 3: Enable Auto-Generation
 When you enter a reverse zone name (containing "in-addr.arpa"), a blue section appears:
 - **Auto-generate PTR records (1-254)**: Check this box to enable auto-generation
-- This creates A records for all IPs from .1 to .254
+- This creates PTR records for all IPs from .1 to .254
 
 #### Step 4: Create Zone
 Click "Create Zone" and the system will:
 1. Create the reverse zone
-2. Generate 254 A records (if checkbox was enabled)
+2. Generate 254 PTR records (if checkbox was enabled)
 3. Show success notification
 
 ## Technical Implementation
@@ -44,10 +44,10 @@ const isReverseZone = zoneName.includes('in-addr.arpa') || zoneName.includes('ip
 
 ### Record Generation
 For each IP (1-254):
-- **Record Name**: `{octet}.{zoneName}` (e.g., `1.214.142.103.in-addr.arpa`)
-- **Record Type**: A
+- **Record Name**: `{octet}.{zoneName}` (e.g., `1.214.142.103.in-addr.arpa.`)
+- **Record Type**: PTR
 - **TTL**: 3600 seconds
-- **Content**: Full IP address (e.g., `103.142.214.1`)
+- **Content**: Placeholder hostname (e.g., `host1.example.com.`)
 
 ### Batch Processing
 - Records are created in batches of 10
@@ -61,10 +61,10 @@ For each IP (1-254):
 
 With auto-generation enabled, creates:
 ```
-1.214.142.103.in-addr.arpa    A    103.142.214.1
-2.214.142.103.in-addr.arpa    A    103.142.214.2
+1.214.142.103.in-addr.arpa.    PTR    host1.example.com.
+2.214.142.103.in-addr.arpa.    PTR    host2.example.com.
 ...
-254.214.142.103.in-addr.arpa  A    103.142.214.254
+254.214.142.103.in-addr.arpa.  PTR    host254.example.com.
 ```
 
 ### IPv4 Reverse Zone (Class B)
@@ -72,10 +72,10 @@ With auto-generation enabled, creates:
 
 Creates records for all /16 network addresses:
 ```
-1.142.103.in-addr.arpa    A    103.142.1
-2.142.103.in-addr.arpa    A    103.142.2
+1.142.103.in-addr.arpa.    PTR    host1.example.com.
+2.142.103.in-addr.arpa.    PTR    host2.example.com.
 ...
-254.142.103.in-addr.arpa  A    103.142.254
+254.142.103.in-addr.arpa.  PTR    host254.example.com.
 ```
 
 ## UI Components
@@ -88,7 +88,7 @@ Creates records for all /16 network addresses:
     <input type="checkbox" id="autoGenerateIPs">
     <span>Auto-generate PTR records (1-254)</span>
   </label>
-  <p>Creates A records for IPs 1-254 in this reverse zone</p>
+  <p>Creates PTR records for IPs 1-254 in this reverse zone</p>
 </div>
 ```
 
@@ -115,11 +115,18 @@ PATCH /api/servers/localhost/zones/{zoneId}
 Body: {
   rrsets: [
     {
-      name: "1.214.142.103.in-addr.arpa",
-      type: "A",
+      name: "1.214.142.103.in-addr.arpa.",
+      type: "PTR",
       ttl: 3600,
       changetype: "REPLACE",
-      records: [{ content: "103.142.214.1", disabled: false }]
+      records: [{ content: "host1.example.com.", disabled: false }]
+    },
+    {
+      name: "2.214.142.103.in-addr.arpa.",
+      type: "PTR",
+      ttl: 3600,
+      changetype: "REPLACE",
+      records: [{ content: "host2.example.com.", disabled: false }]
     },
     ...
   ]

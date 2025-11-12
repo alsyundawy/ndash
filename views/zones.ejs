@@ -1195,21 +1195,30 @@
   async function autoGeneratePTRRecords(zoneId, zoneName) {
     try {
       // Extract the network part from the zone name (e.g., "103.142.214" from "214.142.103.in-addr.arpa")
-      const parts = zoneName.replace('.in-addr.arpa', '').split('.').reverse();
+      const zoneNameClean = zoneName.endsWith('.') ? zoneName.slice(0, -1) : zoneName;
+      const parts = zoneNameClean.replace('.in-addr.arpa', '').split('.').reverse();
       const networkPrefix = parts.join('.');
       
       // Generate records for IPs 1-254
       const recordsToCreate = [];
       for (let i = 1; i <= 254; i++) {
         const ipOctet = i.toString();
+        // For reverse zones, the full name is: ipOctet.zoneName
+        // e.g., "1.214.142.103.in-addr.arpa."
+        const fullName = `${ipOctet}.${zoneNameClean}.`;
+        
+        // PTR content should be a hostname (placeholder in this case)
+        // In real scenario, admin would update these with actual hostnames
+        const ptrContent = `host${i}.example.com.`;
+        
         recordsToCreate.push({
-          name: `${ipOctet}.${zoneName}`,
-          type: 'A',
+          name: fullName,
+          type: 'PTR',
           ttl: 3600,
           changetype: 'REPLACE',
           records: [
             {
-              content: `${networkPrefix}.${i}`,
+              content: ptrContent,
               disabled: false
             }
           ]
@@ -1232,7 +1241,8 @@
         });
 
         if (!patchResponse.ok) {
-          console.warn(`Warning: Some records may not have been created (batch ${Math.floor(i/batchSize) + 1})`);
+          const errorText = await patchResponse.text();
+          console.warn(`Warning: Batch ${Math.floor(i/batchSize) + 1} failed: ${errorText}`);
         }
       }
     } catch (error) {
