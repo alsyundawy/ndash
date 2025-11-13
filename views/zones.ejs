@@ -658,7 +658,7 @@
       
       <div style="margin-bottom: 20px;">
         <label style="display: block; font-size: 14px; font-weight: 600; color: #4b5563; margin-bottom: 8px;">Record Type *</label>
-        <select id="recordType" required style="width: 100%; padding: 10px 12px; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 14px; font-family: inherit; transition: border-color 0.2s;">
+        <select id="recordType" required onchange="updateContentPlaceholder()" style="width: 100%; padding: 10px 12px; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 14px; font-family: inherit; transition: border-color 0.2s;">
           <option value="">Select type</option>
           <option value="A">A</option>
           <option value="AAAA">AAAA</option>
@@ -1105,7 +1105,7 @@
             <svg data-lucide="edit" style="width: 14px; height: 14px; display: inline; margin-right: 4px;"></svg>
             Edit
           </button>
-          <button class="btn btn-secondary" onclick="deleteRecord('${record.name.replace(/'/g, "\\'")}', '${record.type}')" style="padding: 6px 12px; font-size: 12px; color: #dc2626;">
+          <button class="btn btn-secondary" onclick="deleteRecord('${record.name.replace(/'/g, "\\'")}', '${record.type}', '${record.content.replace(/'/g, "\\'")}')" style="padding: 6px 12px; font-size: 12px; color: #dc2626;">
             <svg data-lucide="trash-2" style="width: 14px; height: 14px; display: inline; margin-right: 4px;"></svg>
             Delete
           </button>
@@ -1307,11 +1307,51 @@
         hintDiv.innerHTML = `<strong>Reverse Zone (PTR):</strong> Enter only the IP part. For example, in zone <code>${zone.name}</code>, enter <code>1</code> for PTR record of 103.142.214.1`;
       } else {
         // Forward zone
-        hintDiv.innerHTML = `<strong>Forward Zone:</strong> Enter subdomain name. For example, in zone <code>${zone.name}</code>, enter <code>www</code> to create <code>www.${zone.name}</code>`;
+        hintDiv.innerHTML = `<strong>Forward Zone:</strong> Enter subdomain name or <code>@</code> for root domain. For example, in zone <code>${zone.name}</code>, enter <code>www</code> to create <code>www.${zone.name}</code>, or <code>@</code> for <code>${zone.name}</code>. For NS records, you can add multiple nameservers.`;
       }
     }
     
+    // Update content placeholder based on record type
+    updateContentPlaceholder();
+    
     document.getElementById('addRecordModal').classList.add('show');
+  }
+
+  function updateContentPlaceholder() {
+    const recordType = document.getElementById('recordType').value;
+    const contentTextarea = document.getElementById('recordContent');
+    
+    let placeholder = '';
+    switch(recordType) {
+      case 'A':
+        placeholder = 'e.g., 192.168.1.1';
+        break;
+      case 'AAAA':
+        placeholder = 'e.g., 2001:db8::1';
+        break;
+      case 'CNAME':
+        placeholder = 'e.g., www.example.com.';
+        break;
+      case 'MX':
+        placeholder = 'e.g., 10 mail.example.com.';
+        break;
+      case 'NS':
+        placeholder = 'e.g., ns1.example.com.';
+        break;
+      case 'PTR':
+        placeholder = 'e.g., host.example.com.';
+        break;
+      case 'SRV':
+        placeholder = 'e.g., 0 5 5060 sip.example.com.';
+        break;
+      case 'TXT':
+        placeholder = 'e.g., "v=spf1 -all"';
+        break;
+      default:
+        placeholder = 'Enter record content';
+    }
+    
+    contentTextarea.placeholder = placeholder;
   }
 
   function closeAddRecordModal() {
@@ -1341,18 +1381,67 @@
         throw new Error('Zone not found');
       }
       
+      // Validate record content based on type
+      let validatedContent = recordContent;
+      if (recordType === 'NS') {
+        // NS records must be FQDN with trailing dot
+        if (!validatedContent.endsWith('.')) {
+          validatedContent = validatedContent + '.';
+        }
+        // Basic validation for FQDN format
+        if (!/^[a-zA-Z0-9.-]+\.$/.test(validatedContent)) {
+          throw new Error('NS record content must be a valid FQDN (fully qualified domain name) ending with a dot');
+        }
+      }
+      
       // Build full record name (FQDN)
       let fullName = recordName;
       if (!recordName.endsWith('.')) {
-        // Check if this is a reverse zone (in-addr.arpa)
-        if (zone.name.includes('in-addr.arpa')) {
-          // For reverse zones, if recordName is an IP address part (like "1"), 
-          // prepend it directly to the zone name
-          // e.g., "1" + "214.142.103.in-addr.arpa." = "1.214.142.103.in-addr.arpa."
-          fullName = recordName + '.' + zone.name;
+        // Handle "@" as shorthand for root domain
+        if (recordName === '@') {
+          fullName = zone.name;
         } else {
-          // For forward zones, append zone name normally
-          fullName = recordName + '.' + zone.name;
+          // Check if this is a reverse zone (in-addr.arpa)
+          if (zone.name.includes('in-addr.arpa')) {
+            // For reverse zones, if recordName is an IP address part (like "1"), 
+            // prepend it directly to the zone name
+            // e.g., "1" + "214.142.103.in-addr.arpa." = "1.214.142.103.in-addr.arpa."
+            fullName = recordName + '.' + zone.name;
+          } else {
+            // For forward zones, append zone name normally
+            fullName = recordName + '.' + zone.name;
+          }
+        }
+      }
+      
+      // Determine changetype and handle special cases
+      let changetype = 'REPLACE';
+      let records = [{
+        content: validatedContent,
+        disabled: false
+      }];
+      
+      // Special handling for NS records - allow multiple nameservers
+      if (recordType === 'NS') {
+        try {
+          // Get existing zone data to check for existing NS records
+          const zoneResponse = await fetch(`/api/servers/localhost/zones/${zoneId}`);
+          if (zoneResponse.ok) {
+            const zoneData = await zoneResponse.json();
+            const existingNSRecords = zoneData.rrsets?.find(rrset => 
+              rrset.name === fullName && rrset.type === 'NS'
+            );
+            
+            if (existingNSRecords && existingNSRecords.records) {
+              // Add new record to existing ones
+              records = [...existingNSRecords.records, {
+                content: validatedContent,
+                disabled: false
+              }];
+            }
+          }
+        } catch (error) {
+          console.warn('Could not fetch existing NS records, proceeding with single record:', error);
         }
       }
       
@@ -1361,11 +1450,8 @@
           name: fullName,
           type: recordType,
           ttl: parseInt(recordTTL),
-          changetype: 'REPLACE',
-          records: [{
-            content: recordContent,
-            disabled: false
-          }]
+          changetype: changetype,
+          records: records
         }]
       };
       
@@ -1486,21 +1572,55 @@
     alert('Edit Record feature coming soon');
   }
 
-  async function deleteRecord(recordName, recordType) {
-    if (!confirm(`Are you sure you want to delete the ${recordType} record for ${recordName}?`)) {
+  async function deleteRecord(recordName, recordType, recordContent) {
+    if (!confirm(`Are you sure you want to delete the ${recordType} record "${recordContent}" for ${recordName}?`)) {
       return;
     }
     
     const zoneId = appState.currentZoneId;
     
     try {
-      const payload = {
-        rrsets: [{
-          name: recordName,
-          type: recordType,
-          changetype: 'DELETE'
-        }]
-      };
+      // For specific record deletion, we need to REPLACE with all records except the one being deleted
+      let remainingRecords = [];
+      
+      // Get existing zone data to find all records for this name/type
+      const zoneResponse = await fetch(`/api/servers/localhost/zones/${zoneId}`);
+      if (zoneResponse.ok) {
+        const zoneData = await zoneResponse.json();
+        const existingRrset = zoneData.rrsets?.find(rrset => 
+          rrset.name === recordName && rrset.type === recordType
+        );
+        
+        if (existingRrset && existingRrset.records) {
+          // Filter out the record to be deleted
+          remainingRecords = existingRrset.records.filter(record => 
+            record.content !== recordContent
+          );
+        }
+      }
+      
+      let payload;
+      if (remainingRecords.length > 0) {
+        // Replace with remaining records
+        payload = {
+          rrsets: [{
+            name: recordName,
+            type: recordType,
+            ttl: 3600, // Use default TTL, will be updated if needed
+            changetype: 'REPLACE',
+            records: remainingRecords
+          }]
+        };
+      } else {
+        // No records left, delete the entire rrset
+        payload = {
+          rrsets: [{
+            name: recordName,
+            type: recordType,
+            changetype: 'DELETE'
+          }]
+        };
+      }
       
       const response = await fetch(`/api/servers/localhost/zones/${zoneId}`, {
         method: 'PATCH',

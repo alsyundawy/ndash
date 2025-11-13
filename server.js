@@ -33,37 +33,83 @@ app.use(session({
   cookie: { secure: process.env.NODE_ENV === 'production' }
 }));
 
+// Authentication middleware
+function requireAuth(req, res, next) {
+  if (req.session.authenticated) {
+    return next();
+  }
+  res.redirect('/login');
+}
+
 // Routes
-app.get('/', (req, res) => {
+app.get('/login', (req, res) => {
+  // If already authenticated, redirect to dashboard
+  if (req.session.authenticated) {
+    return res.redirect('/');
+  }
+  res.render('login', {
+    title: 'Login - NDash'
+  });
+});
+
+app.post('/login', (req, res) => {
+  const { username, password } = req.body;
+
+  // Simple authentication - in production, use proper authentication
+  const validUsername = process.env.ADMIN_USERNAME || 'admin';
+  const validPassword = process.env.ADMIN_PASSWORD || 'admin123';
+
+  if (username === validUsername && password === validPassword) {
+    req.session.authenticated = true;
+    req.session.username = username;
+    res.json({ success: true });
+  } else {
+    res.status(401).json({ error: 'Invalid username or password' });
+  }
+});
+
+app.get('/logout', (req, res) => {
+  req.session.destroy((err) => {
+    if (err) {
+      console.error('Session destruction error:', err);
+    }
+    res.redirect('/login');
+  });
+});
+app.get('/', requireAuth, (req, res) => {
   res.render('index', {
     title: 'NDash - PowerDNS Dashboard',
-    page: 'dashboard'
+    page: 'dashboard',
+    username: req.session.username
   });
 });
 
-app.get('/zones', (req, res) => {
+app.get('/zones', requireAuth, (req, res) => {
   res.render('zones', {
     title: 'DNS Zones - NDash',
-    page: 'zones'
+    page: 'zones',
+    username: req.session.username
   });
 });
 
-app.get('/statistics', (req, res) => {
+app.get('/statistics', requireAuth, (req, res) => {
   res.render('statistics', {
     title: 'Statistics - NDash',
-    page: 'statistics'
+    page: 'statistics',
+    username: req.session.username
   });
 });
 
-app.get('/settings', (req, res) => {
+app.get('/settings', requireAuth, (req, res) => {
   res.render('settings', {
     title: 'Settings - NDash',
-    page: 'settings'
+    page: 'settings',
+    username: req.session.username
   });
 });
 
 // API Routes - Servers
-app.get('/api/servers', async (req, res) => {
+app.get('/api/servers', requireAuth, async (req, res) => {
   try {
     const servers = await pdnsClient.getServers();
     res.json(servers);
@@ -73,7 +119,7 @@ app.get('/api/servers', async (req, res) => {
 });
 
 // API Routes - Zones
-app.get('/api/servers/:serverId/zones', async (req, res) => {
+app.get('/api/servers/:serverId/zones', requireAuth, async (req, res) => {
   try {
     const zones = await pdnsClient.getZones(req.params.serverId);
     res.json(zones);
@@ -82,7 +128,7 @@ app.get('/api/servers/:serverId/zones', async (req, res) => {
   }
 });
 
-app.get('/api/servers/:serverId/zones/:zoneId', async (req, res) => {
+app.get('/api/servers/:serverId/zones/:zoneId', requireAuth, async (req, res) => {
   try {
     const zone = await pdnsClient.getZone(req.params.serverId, req.params.zoneId);
     res.json(zone);
@@ -91,7 +137,7 @@ app.get('/api/servers/:serverId/zones/:zoneId', async (req, res) => {
   }
 });
 
-app.post('/api/servers/:serverId/zones', async (req, res) => {
+app.post('/api/servers/:serverId/zones', requireAuth, async (req, res) => {
   try {
     console.log('Creating zone with data:', req.body);
     const zone = await pdnsClient.createZone(req.params.serverId, req.body);
@@ -102,7 +148,7 @@ app.post('/api/servers/:serverId/zones', async (req, res) => {
   }
 });
 
-app.delete('/api/servers/:serverId/zones/:zoneId', async (req, res) => {
+app.delete('/api/servers/:serverId/zones/:zoneId', requireAuth, async (req, res) => {
   try {
     await pdnsClient.deleteZone(req.params.serverId, req.params.zoneId);
     res.json({ success: true });
@@ -112,7 +158,7 @@ app.delete('/api/servers/:serverId/zones/:zoneId', async (req, res) => {
 });
 
 // API Routes - Records
-app.patch('/api/servers/:serverId/zones/:zoneId', async (req, res) => {
+app.patch('/api/servers/:serverId/zones/:zoneId', requireAuth, async (req, res) => {
   try {
     await pdnsClient.updateRecords(req.params.serverId, req.params.zoneId, req.body);
     res.json({ success: true });
@@ -122,7 +168,7 @@ app.patch('/api/servers/:serverId/zones/:zoneId', async (req, res) => {
 });
 
 // Statistics
-app.get('/api/servers/:serverId/statistics', async (req, res) => {
+app.get('/api/servers/:serverId/statistics', requireAuth, async (req, res) => {
   try {
     const stats = await pdnsClient.getStatistics(req.params.serverId);
     res.json(stats);

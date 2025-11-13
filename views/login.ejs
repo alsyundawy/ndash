@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login - NDash</title>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .login-container {
+      background: white;
+      border-radius: 12px;
+      padding: 40px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      width: 100%;
+      max-width: 400px;
+      animation: slideUp 0.3s ease-out;
+    }
+
+    @keyframes slideUp {
+      from {
+        opacity: 0;
+        transform: translateY(30px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .login-header {
+      text-align: center;
+      margin-bottom: 32px;
+    }
+
+    .login-header svg {
+      width: 64px;
+      height: 64px;
+      color: #667eea;
+      margin-bottom: 16px;
+    }
+
+    .login-header h1 {
+      font-size: 28px;
+      font-weight: 700;
+      color: #1a202c;
+      margin-bottom: 8px;
+    }
+
+    .login-header p {
+      color: #718096;
+      font-size: 14px;
+    }
+
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    .form-group label {
+      display: block;
+      font-size: 14px;
+      font-weight: 600;
+      color: #4b5563;
+      margin-bottom: 8px;
+    }
+
+    .form-group input {
+      width: 100%;
+      padding: 12px 16px;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      font-size: 14px;
+      font-family: inherit;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .form-group input:focus {
+      outline: none;
+      border-color: #667eea;
+      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    }
+
+    .login-btn {
+      width: 100%;
+      padding: 12px 16px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      margin-bottom: 16px;
+    }
+
+    .login-btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 8px 16px rgba(102, 126, 234, 0.3);
+    }
+
+    .login-btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .error-message {
+      background: #fed7d7;
+      color: #c53030;
+      padding: 12px;
+      border-radius: 6px;
+      font-size: 14px;
+      margin-bottom: 16px;
+      display: none;
+    }
+
+    .cookie-notice {
+      position: fixed;
+      bottom: 20px;
+      left: 20px;
+      right: 20px;
+      background: #2d3748;
+      color: white;
+      padding: 16px 20px;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+      display: none;
+      z-index: 1000;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .cookie-notice.show {
+      display: block;
+      animation: slideUp 0.3s ease-out;
+    }
+
+    .cookie-notice-buttons {
+      display: flex;
+      gap: 12px;
+      margin-top: 12px;
+    }
+
+    .cookie-btn {
+      padding: 8px 16px;
+      border: none;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .cookie-btn-accept {
+      background: #48bb78;
+      color: white;
+    }
+
+    .cookie-btn-accept:hover {
+      background: #38a169;
+    }
+
+    .cookie-btn-decline {
+      background: #e53e3e;
+      color: white;
+    }
+
+    .cookie-btn-decline:hover {
+      background: #c53030;
+    }
+
+    @media (max-width: 480px) {
+      .login-container {
+        margin: 20px;
+        padding: 32px 24px;
+      }
+
+      .cookie-notice {
+        left: 10px;
+        right: 10px;
+        bottom: 10px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="login-container">
+    <div class="login-header">
+      <svg data-lucide="globe"></svg>
+      <h1>NDash</h1>
+      <p>PowerDNS Dashboard</p>
+    </div>
+
+    <div id="errorMessage" class="error-message"></div>
+
+    <form id="loginForm">
+      <div class="form-group">
+        <label for="username">Username</label>
+        <input type="text" id="username" name="username" required placeholder="Enter your username">
+      </div>
+
+      <div class="form-group">
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" required placeholder="Enter your password">
+      </div>
+
+      <button type="submit" class="login-btn" id="loginBtn">
+        <span id="loginText">Sign In</span>
+      </button>
+    </form>
+  </div>
+
+  <div id="cookieNotice" class="cookie-notice">
+    <div>
+      <strong>Cookie Notice</strong><br>
+      This website uses cookies to enhance your experience and provide secure access to the PowerDNS dashboard.
+      By continuing to use this site, you agree to our use of cookies.
+    </div>
+    <div class="cookie-notice-buttons">
+      <button class="cookie-btn cookie-btn-accept" onclick="acceptCookies()">Accept</button>
+      <button class="cookie-btn cookie-btn-decline" onclick="declineCookies()">Decline</button>
+    </div>
+  </div>
+
+  <script>
+    // Cookie consent management
+    function showCookieNotice() {
+      const consent = getCookieConsent();
+      if (!consent) {
+        document.getElementById('cookieNotice').classList.add('show');
+      }
+    }
+
+    function acceptCookies() {
+      setCookieConsent(true);
+      document.getElementById('cookieNotice').classList.remove('show');
+    }
+
+    function declineCookies() {
+      setCookieConsent(false);
+      document.getElementById('cookieNotice').classList.remove('show');
+      // Optional: redirect or show message about limited functionality
+    }
+
+    function getCookieConsent() {
+      try {
+        const consent = localStorage.getItem('cookieConsent');
+        return consent ? JSON.parse(consent) : null;
+      } catch (e) {
+        return null;
+      }
+    }
+
+    function setCookieConsent(accepted) {
+      try {
+        const consentData = {
+          accepted: accepted,
+          timestamp: new Date().toISOString(),
+          version: '1.0'
+        };
+        localStorage.setItem('cookieConsent', JSON.stringify(consentData));
+      } catch (e) {
+        console.error('Failed to save cookie consent:', e);
+      }
+    }
+
+    // Login form handling
+    document.getElementById('loginForm').addEventListener('submit', async function(e) {
+      e.preventDefault();
+
+      const username = document.getElementById('username').value;
+      const password = document.getElementById('password').value;
+      const loginBtn = document.getElementById('loginBtn');
+      const loginText = document.getElementById('loginText');
+      const errorMessage = document.getElementById('errorMessage');
+
+      // Reset error message
+      errorMessage.style.display = 'none';
+      errorMessage.textContent = '';
+
+      // Disable button and show loading
+      loginBtn.disabled = true;
+      loginText.textContent = 'Signing in...';
+
+      try {
+        const response = await fetch('/login', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ username, password })
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+          // Redirect to dashboard
+          window.location.href = '/';
+        } else {
+          // Show error
+          errorMessage.textContent = data.error || 'Login failed';
+          errorMessage.style.display = 'block';
+        }
+      } catch (error) {
+        errorMessage.textContent = 'Network error. Please try again.';
+        errorMessage.style.display = 'block';
+      } finally {
+        // Re-enable button
+        loginBtn.disabled = false;
+        loginText.textContent = 'Sign In';
+      }
+    });
+
+    // Initialize
+    window.addEventListener('load', function() {
+      lucide.createIcons();
+      showCookieNotice();
+    });
+  </script>
+</body>
+</html>

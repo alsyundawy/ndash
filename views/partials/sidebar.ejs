@@ -152,6 +152,31 @@
     font-size: 11px;
     color: #cbd5e1;
   }
+  
+  .sidebar-logout {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 16px;
+    margin-top: 12px;
+    background: rgba(239, 68, 68, 0.1);
+    color: #fca5a5;
+    text-decoration: none;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 500;
+    transition: all 0.2s;
+  }
+  
+  .sidebar-logout:hover {
+    background: rgba(239, 68, 68, 0.2);
+    color: #fecaca;
+  }
+  
+  .sidebar-logout svg {
+    width: 16px;
+    height: 16px;
+  }
 </style>
 
 <!-- Sidebar -->
@@ -189,11 +214,15 @@
   
   <div class="sidebar-footer">
     <div class="sidebar-user">
-      <div class="sidebar-avatar">A</div>
+      <div class="sidebar-avatar"><%= (typeof username !== 'undefined' ? username.charAt(0).toUpperCase() : 'A') %></div>
       <div class="sidebar-user-info">
-        <h3>Admin</h3>
-        <p>admin@ndash.local</p>
+        <h3><%= typeof username !== 'undefined' ? username : 'Admin' %></h3>
+        <p>Logged in</p>
       </div>
     </div>
+    <a href="/logout" class="sidebar-logout">
+      <svg data-lucide="log-out"></svg>
+      Logout
+    </a>
   </div>
 </aside>
