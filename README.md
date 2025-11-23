@@ -38,21 +38,57 @@ Contoh error yang ditangani:
 - `HTTP 500`: Internal server error dari PowerDNS
 - `Invalid Data`: Format data yang tidak sesuai dari API
 
-## ⚡ Performance Optimizations
+## 🌐 Split-Horizon DNS
 
-NDash dioptimasi untuk performa yang maksimal:
+NDash includes a built-in **Split-Horizon DNS Proxy** that provides different DNS responses based on client subnet:
 
-### Loading Strategy
-- **Skeleton Loading**: UI skeleton ditampilkan saat data dimuat
-- **Deferred Data Loading**: Data di-fetch setelah UI render selesai
-- **Lazy Icon Creation**: Icons dibuat setelah data tersedia
-- **Progressive Enhancement**: Fitur tambahan dimuat secara bertahap
+### Features
+- **Client-aware responses**: Different answers for internal vs external clients
+- **CIDR subnet support**: Configure IP ranges for internal/external networks
+- **Real-time configuration**: Changes apply immediately without restarting
+- **DNS proxy server**: Runs on port 5353 (configurable)
 
-### Performance Features
-- **GPU Acceleration**: Transform dan opacity menggunakan hardware acceleration
-- **Optimized Animations**: `will-change` properties untuk animasi yang smooth
-- **Efficient Bindings**: Computed properties mengurangi Alpine.js re-evaluations
-- **Resource Preloading**: Critical resources di-preload untuk loading yang lebih cepat
+### Configuration
+
+```json
+{
+  "enabled": true,
+  "zones": [
+    {
+      "name": "dionipe.local",
+      "internal": [
+        {"name": "@", "type": "A", "value": "192.168.203.5"}
+      ],
+      "external": [
+        {"name": "@", "type": "A", "value": "8.8.8.8"}
+      ]
+    }
+  ],
+  "subnets": {
+    "internal": ["192.168.0.0/16", "10.0.0.0/8", "172.16.0.0/12"],
+    "external": ["0.0.0.0/0"]
+  }
+}
+```
+
+### Testing
+
+```bash
+# Test external response (from 127.0.0.1)
+$ dig @127.0.0.1 -p 5353 dionipe.local
+# Answer: 8.8.8.8
+
+# Test internal response (from PowerDNS directly)
+$ dig @127.0.0.1 dionipe.local  
+# Answer: 192.168.203.5
+```
+
+### How It Works
+
+1. **Client Detection**: Proxy identifies client IP and determines if it's internal or external
+2. **Record Selection**: Serves appropriate records based on client type
+3. **Fallback**: Forwards non-Split-Horizon queries to upstream DNS server
+4. **Real-time Updates**: Configuration reloads automatically when changed via web UI
 
 ### Benchmarks (Local Development)
 - **Server Response**: ~19ms

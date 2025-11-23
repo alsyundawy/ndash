@@ -37,6 +37,7 @@
     "express-session": "^1.17.3",
     "helmet": "^7.1.0",
     "morgan": "^1.10.0",
+    "native-dns": "^0.7.0",
     "pm2-logrotate": "^3.0.0"
   },
   "devDependencies": {

@@ -20,6 +20,10 @@ const morgan = require('morgan');
 const helmet = require('helmet');
 const compression = require('compression');
 const pdnsClient = require('./lib/pdns-client');
+const dns = require('dns');
+const dgram = require('dgram');
+const { networkInterfaces } = require('os');
+const nativeDns = require('native-dns');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -53,6 +57,184 @@ function requireAuth(req, res, next) {
   }
   res.redirect('/login');
 }
+
+// Split-Horizon DNS Proxy
+class SplitHorizonDNSProxy {
+  constructor() {
+    this.upstreamServer = process.env.PDNS_SERVER || '127.0.0.1';
+    this.upstreamPort = parseInt(process.env.PDNS_PORT) || 53;
+    this.proxyPort = parseInt(process.env.DNS_PROXY_PORT) || 5353;
+    this.server = nativeDns.createServer();
+    this.splitHorizonEnabled = false;
+    this.config = null;
+  }
+
+  // Check if IP is in subnet (CIDR notation)
+  isIPInSubnet(ip, subnet) {
+    try {
+      const [subnetIP, prefixLength] = subnet.split('/');
+      const subnetParts = subnetIP.split('.').map(Number);
+      const ipParts = ip.split('.').map(Number);
+      const mask = ~(0xFFFFFFFF >>> parseInt(prefixLength));
+
+      const subnetInt = (subnetParts[0] << 24) | (subnetParts[1] << 16) | (subnetParts[2] << 8) | subnetParts[3];
+      const ipInt = (ipParts[0] << 24) | (ipParts[1] << 16) | (ipParts[2] << 8) | ipParts[3];
+      const maskedSubnet = subnetInt & mask;
+      const maskedIP = ipInt & mask;
+
+      return maskedSubnet === maskedIP;
+    } catch (error) {
+      console.error('Error checking subnet:', error);
+      return false;
+    }
+  }
+
+  // Determine if client IP is internal or external
+  getClientType(clientIP) {
+    if (!this.config || !this.splitHorizonEnabled) {
+      return 'default';
+    }
+
+    // Check internal subnets
+    for (const subnet of this.config.subnets.internal) {
+      if (this.isIPInSubnet(clientIP, subnet)) {
+        return 'internal';
+      }
+    }
+
+    // Check external subnets
+    for (const subnet of this.config.subnets.external) {
+      if (this.isIPInSubnet(clientIP, subnet)) {
+        return 'external';
+      }
+    }
+
+    return 'external'; // Default to external
+  }
+
+  // Get Split-Horizon record for a query
+  getSplitHorizonRecord(name, type, clientType) {
+    if (!this.config || !this.splitHorizonEnabled) {
+      return null;
+    }
+
+    // Remove trailing dot if present
+    const cleanName = name.replace(/\.$/, '');
+    
+    // Find zone that contains this name
+    for (const zone of this.config.zones) {
+      const zoneName = zone.name.replace(/\.$/, '');
+      
+      if (cleanName === zoneName || cleanName.endsWith('.' + zoneName)) {
+        const records = zone[clientType] || [];
+        
+        // Find matching record
+        for (const record of records) {
+          const recordName = record.name === '@' ? zoneName : 
+                           record.name.includes('.') ? record.name : 
+                           `${record.name}.${zoneName}`;
+          
+          if (recordName === cleanName && record.type === type) {
+            return {
+              name: name,
+              type: type,
+              ttl: 3600,
+              content: record.value
+            };
+          }
+        }
+      }
+    }
+
+    return null;
+  }
+
+  // Load Split-Horizon configuration
+  async loadConfig() {
+    try {
+      this.config = await readSplitHorizonConfig();
+      this.splitHorizonEnabled = this.config.enabled;
+      console.log('📡 Split-Horizon DNS Proxy configuration loaded');
+    } catch (error) {
+      console.error('Error loading Split-Horizon config:', error);
+      this.splitHorizonEnabled = false;
+    }
+  }
+
+  // Start DNS proxy server
+  start() {
+    this.server.on('request', (request, response) => {
+      const clientIP = request.address.address;
+      const clientType = this.getClientType(clientIP);
+      
+      console.log(`📡 DNS Query from ${clientIP} (${clientType}): ${request.question[0].name}`);
+      
+      const question = request.question[0];
+      const splitRecord = this.getSplitHorizonRecord(question.name, question.type === 1 ? 'A' : question.type.toString(), clientType);
+      
+      if (splitRecord) {
+        console.log(`🎯 Split-Horizon response for ${question.name}: ${splitRecord.content} (${clientType})`);
+        
+        // Create answer record
+        const answer = nativeDns.A({
+          name: question.name,
+          address: splitRecord.content,
+          ttl: splitRecord.ttl
+        });
+        
+        response.answer.push(answer);
+        response.send();
+        return;
+      }
+      
+      // Forward to upstream DNS server
+      const upstreamRequest = nativeDns.Request({
+        question: question,
+        server: { address: this.upstreamServer, port: this.upstreamPort, type: 'udp' },
+        timeout: 1000
+      });
+      
+      upstreamRequest.on('message', (err, upstreamResponse) => {
+        if (err) {
+          console.error('Upstream DNS error:', err);
+          response.send();
+          return;
+        }
+        
+        // Copy upstream response
+        response.answer = upstreamResponse.answer || [];
+        response.authority = upstreamResponse.authority || [];
+        response.additional = upstreamResponse.additional || [];
+        response.send();
+      });
+      
+      upstreamRequest.on('timeout', () => {
+        console.error('Upstream DNS timeout');
+        response.send();
+      });
+      
+      upstreamRequest.send();
+    });
+
+    this.server.on('error', (err) => {
+      console.error('DNS Proxy error:', err);
+    });
+
+    this.server.on('listening', () => {
+      console.log(`🚀 Split-Horizon DNS Proxy listening on port ${this.proxyPort}`);
+    });
+
+    this.server.serve(this.proxyPort);
+  }
+
+  // Reload configuration
+  async reloadConfig() {
+    await this.loadConfig();
+  }
+}
+
+// Initialize DNS Proxy
+const dnsProxy = new SplitHorizonDNSProxy();
 
 // Routes
 app.get('/login', (req, res) => {
@@ -452,6 +634,10 @@ app.post('/api/split-horizon/config', requireAuth, async (req, res) => {
   try {
     const config = req.body;
     await writeSplitHorizonConfig(config);
+    
+    // Reload DNS proxy configuration
+    await dnsProxy.reloadConfig();
+    
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -584,7 +770,11 @@ app.use((err, req, res, next) => {
 });
 
 // Start server
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`🚀 NDash PowerDNS Dashboard running on http://localhost:${PORT}`);
   console.log(`📡 PowerDNS API: ${process.env.PDNS_API_URL}`);
+  
+  // Start Split-Horizon DNS Proxy
+  await dnsProxy.loadConfig();
+  dnsProxy.start();
 });
