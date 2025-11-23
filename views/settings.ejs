@@ -1333,6 +1333,10 @@
         }
 
         showSuccess('Split-Horizon configuration saved successfully');
+        
+        // Notify other pages that configuration has changed
+        localStorage.setItem('splitHorizonConfigChanged', Date.now().toString());
+        window.dispatchEvent(new CustomEvent('splitHorizonConfigChanged'));
       } catch (error) {
         showError('Failed to save Split-Horizon configuration: ' + error.message);
       }

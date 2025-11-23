@@ -8,6 +8,11 @@
           "name": "@",
           "type": "A",
           "value": "192.168.203.5"
+        },
+        {
+          "name": "www",
+          "type": "A",
+          "value": "192.168.203.5"
         }
       ],
       "external": [

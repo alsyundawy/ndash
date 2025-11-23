@@ -688,6 +688,7 @@
           <input type="checkbox" id="enableSplitHorizon" style="margin-right: 8px; cursor: pointer;" onchange="toggleSplitHorizonOptions()">
           <svg data-lucide="git-branch" style="width: 16px; height: 16px; margin-right: 6px;"></svg>
           Enable Split-Horizon DNS
+          <span id="splitHorizonStatus" style="margin-left: 8px; padding: 2px 6px; border-radius: 10px; font-size: 10px; font-weight: 600; text-transform: uppercase;"></span>
         </label>
         
         <div id="splitHorizonOptions" style="display: none;">
@@ -707,7 +708,7 @@
             <small style="color: #718096; font-size: 11px;">Leave empty to use main content for external clients</small>
           </div>
           
-          <div style="padding: 8px; background: #fef3c7; border-radius: 4px; font-size: 12px; color: #92400e;">
+          <div style="padding: 8px; background: #fef3c7; border-radius: 4px; font-size: 12px; color: #92400e;" class="split-horizon-note">
             <strong>Note:</strong> Split-Horizon requires server configuration. Configure subnets in Settings → Split-Horizon DNS.
           </div>
         </div>
@@ -1732,7 +1733,48 @@
       // Initialize state
       toggleSplitHorizonOptions();
     }
+    
+    // Refresh Split-Horizon state on page load
+    refreshSplitHorizonState();
+    
+    // Listen for storage events (when settings change)
+    window.addEventListener('storage', function(e) {
+      if (e.key === 'splitHorizonConfigChanged') {
+        refreshSplitHorizonState();
+      }
+    });
+    
+    // Also listen for custom events
+    window.addEventListener('splitHorizonConfigChanged', function() {
+      refreshSplitHorizonState();
+    });
+    
+    // Add a refresh button or periodic check
+    addSplitHorizonRefreshButton();
   });
+
+  // Add a refresh button for Split-Horizon status
+  function addSplitHorizonRefreshButton() {
+    const splitHorizonSection = document.querySelector('.split-horizon-section');
+    if (splitHorizonSection) {
+      // Look for existing refresh button or add one
+      let refreshBtn = splitHorizonSection.querySelector('.split-horizon-refresh');
+      if (!refreshBtn) {
+        const header = splitHorizonSection.querySelector('h4') || splitHorizonSection.querySelector('strong');
+        if (header) {
+          refreshBtn = document.createElement('button');
+          refreshBtn.className = 'split-horizon-refresh';
+          refreshBtn.innerHTML = '<svg data-lucide="refresh-cw" style="width: 14px; height: 14px;"></svg>';
+          refreshBtn.style.cssText = 'background: none; border: none; color: #718096; cursor: pointer; padding: 4px; border-radius: 4px; margin-left: 8px;';
+          refreshBtn.title = 'Refresh Split-Horizon status';
+          refreshBtn.onclick = refreshSplitHorizonState;
+          
+          header.appendChild(refreshBtn);
+          lucide.createIcons();
+        }
+      }
+    }
+  }
 </script>
 
 <script>
@@ -1759,6 +1801,54 @@
     } catch (error) {
       console.error('Error checking split-horizon status:', error);
       return false;
+    }
+  }
+
+  // Refresh Split-Horizon UI state
+  async function refreshSplitHorizonState() {
+    try {
+      const response = await fetch('/api/split-horizon/config');
+      const config = await response.json();
+      
+      const checkbox = document.getElementById('enableSplitHorizon');
+      const statusBadge = document.getElementById('splitHorizonStatus');
+      
+      if (checkbox) {
+        checkbox.checked = config.enabled;
+        // Update the UI state
+        toggleSplitHorizonOptions();
+        
+        // Update status badge
+        if (statusBadge) {
+          if (config.enabled) {
+            statusBadge.textContent = 'Enabled';
+            statusBadge.style.backgroundColor = '#c6f6d5';
+            statusBadge.style.color = '#22543d';
+          } else {
+            statusBadge.textContent = 'Disabled';
+            statusBadge.style.backgroundColor = '#fed7d7';
+            statusBadge.style.color = '#742a2a';
+          }
+        }
+        
+        // Update the note text based on configuration
+        const noteElement = document.querySelector('.split-horizon-note');
+        if (noteElement) {
+          if (config.enabled) {
+            noteElement.innerHTML = '<strong>Status:</strong> Split-Horizon is enabled. Configure different responses for internal vs external clients.';
+            noteElement.style.backgroundColor = '#c6f6d5';
+            noteElement.style.color = '#22543d';
+            noteElement.style.border = '1px solid #9ae6b4';
+          } else {
+            noteElement.innerHTML = '<strong>Note:</strong> Split-Horizon is disabled. Enable it in Settings → Split-Horizon DNS to use this feature.';
+            noteElement.style.backgroundColor = '#fef3c7';
+            noteElement.style.color = '#92400e';
+            noteElement.style.border = '1px solid #f6e05e';
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error refreshing split-horizon state:', error);
     }
   }
 
